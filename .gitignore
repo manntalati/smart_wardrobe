@@ -1,0 +1,8 @@
+.env
+backend/venv
+backend/wardrobe.db
+backend/uploads
+backend/models
+backend/__pycache__
+backend/services/__pycache__
+backend/faiss_index.bin
