@@ -24,6 +24,8 @@ def get_outfit_recommendations(
     city: str = None,
     num_outfits: int = 3,
     style_preference: str = None,
+    user_id: int = None,
+    db: SessionLocal = None,
 ) -> dict:
     """
     Generate outfit recommendations using the full pipeline:
@@ -38,9 +40,19 @@ def get_outfit_recommendations(
         weather_data = get_weather(city)
 
     # 2. Load wardrobe
-    db = SessionLocal()
+    # Use passed DB session or create new one (fallback for standalone testing)
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
+
     try:
-        items = db.query(ClothingItem).all()
+        query = db.query(ClothingItem)
+        if user_id:
+            query = query.filter(ClothingItem.user_id == user_id)
+        
+        items = query.all()
+        
         if not items:
             return {
                 "outfits": [],
@@ -50,7 +62,8 @@ def get_outfit_recommendations(
 
         wardrobe_summary = _build_wardrobe_summary(items)
     finally:
-        db.close()
+        if close_db:
+            db.close()
 
     # 3. Retrieve fashion context
     rag_query = f"outfit for {occasion}"

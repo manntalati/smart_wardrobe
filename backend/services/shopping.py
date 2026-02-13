@@ -29,13 +29,21 @@ ESSENTIAL_CATEGORIES = {
 ESSENTIAL_COLORS = ["black", "white", "navy blue", "grey", "beige", "brown"]
 
 
-def analyze_wardrobe_gaps(occasion_focus: str = None) -> dict:
+def analyze_wardrobe_gaps(occasion_focus: str = None, user_id: int = None, db: SessionLocal = None) -> dict:
     """
     Analyze the user's wardrobe for gaps and generate shopping suggestions.
     """
-    db = SessionLocal()
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
+
     try:
-        items = db.query(ClothingItem).all()
+        query = db.query(ClothingItem)
+        if user_id:
+            query = query.filter(ClothingItem.user_id == user_id)
+            
+        items = query.all()
 
         if not items:
             return {
@@ -54,7 +62,10 @@ def analyze_wardrobe_gaps(occasion_focus: str = None) -> dict:
         gaps = _identify_gaps(analysis, occasion_focus)
 
         # Generate suggestions
+        suggestion_gaps = gaps[:5] # Limit context window
         if GEMINI_API_KEY:
+            # We call internal function but need to pass full args if we change signature there too?
+            # _generate_shopping_suggestions takes analysis and gaps.
             suggestions = _generate_shopping_suggestions(analysis, gaps, occasion_focus)
         else:
             suggestions = _fallback_suggestions(gaps)
@@ -65,7 +76,8 @@ def analyze_wardrobe_gaps(occasion_focus: str = None) -> dict:
             "analysis": analysis,
         }
     finally:
-        db.close()
+        if close_db:
+            db.close()
 
 
 def _analyze_existing_wardrobe(items: list[ClothingItem]) -> dict:

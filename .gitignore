@@ -6,3 +6,4 @@ backend/models
 backend/__pycache__
 backend/services/__pycache__
 backend/faiss_index.bin
+frontend/.env.local

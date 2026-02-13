@@ -6,14 +6,27 @@ import {
     uploadItem,
     deleteItem,
     getImageUrl,
+    searchImages,
+    addItemFromUrl,
     type ClothingItem,
 } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 export default function WardrobePage() {
+    const { user } = useAuth();
+    const [activeTab, setActiveTab] = useState<"wardrobe" | "search">("wardrobe");
+
+    // Wardrobe State
     const [items, setItems] = useState<ClothingItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [showUpload, setShowUpload] = useState(false);
     const [filter, setFilter] = useState({ category: "", color: "" });
+
+    // Search State
+    const [query, setQuery] = useState("");
+    const [searchResults, setSearchResults] = useState<string[]>([]);
+    const [searching, setSearching] = useState(false);
+    const [addingUrl, setAddingUrl] = useState<string | null>(null);
 
     const loadItems = useCallback(async () => {
         try {
@@ -27,8 +40,8 @@ export default function WardrobePage() {
     }, []);
 
     useEffect(() => {
-        loadItems();
-    }, [loadItems]);
+        if (user) loadItems();
+    }, [user, loadItems]);
 
     const handleDelete = async (id: number) => {
         if (!confirm("Remove this item from your wardrobe?")) return;
@@ -45,6 +58,34 @@ export default function WardrobePage() {
         loadItems();
     };
 
+    const handleSearch = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!query.trim()) return;
+        setSearching(true);
+        try {
+            const data = await searchImages(query);
+            setSearchResults(data.images);
+        } catch (err) {
+            alert("Search failed. Please try again.");
+        } finally {
+            setSearching(false);
+        }
+    };
+
+    const handleAddFromSearch = async (imageUrl: string) => {
+        setAddingUrl(imageUrl);
+        try {
+            await addItemFromUrl(imageUrl);
+            alert("Item added to wardrobe!");
+            loadItems();
+            // Optional: Switch back to wardrobe tab?
+        } catch (err) {
+            alert("Failed to add item. Try another image.");
+        } finally {
+            setAddingUrl(null);
+        }
+    };
+
     // Filter items
     const categories = [...new Set(items.map((i) => i.category))].sort();
     const colors = [...new Set(items.map((i) => i.color))].sort();
@@ -57,113 +98,155 @@ export default function WardrobePage() {
     return (
         <div className="page-container">
             <div className="page-header">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
                     <div>
                         <h1 className="heading-lg">My Wardrobe</h1>
-                        <p>Upload and manage your clothing catalog. AI classifies each item automatically.</p>
+                        <p>Manage your collection or discover new items.</p>
                     </div>
-                    <button className="btn btn-primary" onClick={() => setShowUpload(true)}>
-                        📸 Add Item
-                    </button>
+
+                    <div style={{ display: "flex", gap: 10 }}>
+                        <div className="tab-group" style={{ background: "var(--bg-glass)", padding: 4, borderRadius: 8, display: "flex" }}>
+                            <button
+                                className={`btn btn-sm ${activeTab === "wardrobe" ? "btn-primary" : "btn-ghost"}`}
+                                onClick={() => setActiveTab("wardrobe")}
+                                style={{ borderRadius: 6 }}
+                            >
+                                👔 Your Items
+                            </button>
+                            <button
+                                className={`btn btn-sm ${activeTab === "search" ? "btn-primary" : "btn-ghost"}`}
+                                onClick={() => setActiveTab("search")}
+                                style={{ borderRadius: 6 }}
+                            >
+                                🔍 Search & Add
+                            </button>
+                        </div>
+                        {activeTab === "wardrobe" && (
+                            <button className="btn btn-primary" onClick={() => setShowUpload(true)}>
+                                📸 Upload
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
-            {/* Filters */}
-            {items.length > 0 && (
-                <div className="filter-bar">
-                    <div className="form-group">
-                        <label className="form-label">Category</label>
-                        <select
-                            className="select"
-                            value={filter.category}
-                            onChange={(e) => setFilter((f) => ({ ...f, category: e.target.value }))}
-                        >
-                            <option value="">All Categories</option>
-                            {categories.map((c) => (
-                                <option key={c} value={c}>{c}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="form-group">
-                        <label className="form-label">Color</label>
-                        <select
-                            className="select"
-                            value={filter.color}
-                            onChange={(e) => setFilter((f) => ({ ...f, color: e.target.value }))}
-                        >
-                            <option value="">All Colors</option>
-                            {colors.map((c) => (
-                                <option key={c} value={c}>{c}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "flex-end" }}>
-                        <span className="text-sm text-muted" style={{ paddingBottom: 12 }}>
-                            {filtered.length} item{filtered.length !== 1 ? "s" : ""}
-                        </span>
-                    </div>
-                </div>
-            )}
-
-            {loading ? (
-                <div className="loading-container">
-                    <div className="spinner" />
-                    <p>Loading wardrobe...</p>
-                </div>
-            ) : items.length === 0 ? (
-                <div className="empty-state">
-                    <div className="empty-state-icon">📸</div>
-                    <h3>No items yet</h3>
-                    <p>Upload your first clothing item and our AI will classify it automatically.</p>
-                    <button className="btn btn-primary" onClick={() => setShowUpload(true)} style={{ marginTop: 8 }}>
-                        Add Your First Item
-                    </button>
-                </div>
-            ) : (
-                <div className="grid-auto">
-                    {filtered.map((item) => (
-                        <div key={item.id} className="glass-card clothing-card">
-                            <div className="clothing-card-img">
-                                <img src={getImageUrl(item.image_path)} alt={item.name || item.category} />
-                                <div className="clothing-card-actions">
-                                    <button
-                                        className="btn btn-danger btn-icon"
-                                        onClick={() => handleDelete(item.id)}
-                                        title="Remove"
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
+            {activeTab === "wardrobe" ? (
+                <>
+                    {/* Filters */}
+                    {items.length > 0 && (
+                        <div className="filter-bar">
+                            <div className="form-group">
+                                <label className="form-label">Category</label>
+                                <select
+                                    className="select"
+                                    value={filter.category}
+                                    onChange={(e) => setFilter((f) => ({ ...f, category: e.target.value }))}
+                                >
+                                    <option value="">All Categories</option>
+                                    {categories.map((c) => (
+                                        <option key={c} value={c}>{c}</option>
+                                    ))}
+                                </select>
                             </div>
-                            <div className="clothing-card-body">
-                                <div className="clothing-card-name">
-                                    {item.name || `${item.color} ${item.category}`}
-                                </div>
-                                <div className="clothing-card-tags">
-                                    <span className="tag">{item.category}</span>
-                                    <span className="tag tag-neutral">{item.color}</span>
-                                    {item.pattern && item.pattern !== "solid" && (
-                                        <span className="tag tag-neutral">{item.pattern}</span>
-                                    )}
-                                </div>
-                                <div className="clothing-card-tags" style={{ marginTop: 4 }}>
-                                    <span className="tag tag-neutral">{item.fabric}</span>
-                                    <span className="tag tag-neutral">{item.season}</span>
-                                </div>
-                                {item.confidence && (
-                                    <div className="clothing-card-confidence">
-                                        <span>AI: {Math.round(item.confidence * 100)}%</span>
-                                        <div className="confidence-bar">
-                                            <div
-                                                className="confidence-fill"
-                                                style={{ width: `${item.confidence * 100}%` }}
-                                            />
-                                        </div>
-                                    </div>
-                                )}
+                            <div className="form-group">
+                                <label className="form-label">Color</label>
+                                <select
+                                    className="select"
+                                    value={filter.color}
+                                    onChange={(e) => setFilter((f) => ({ ...f, color: e.target.value }))}
+                                >
+                                    <option value="">All Colors</option>
+                                    {colors.map((c) => (
+                                        <option key={c} value={c}>{c}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "flex-end" }}>
+                                <span className="text-sm text-muted" style={{ paddingBottom: 12 }}>
+                                    {filtered.length} item{filtered.length !== 1 ? "s" : ""}
+                                </span>
                             </div>
                         </div>
-                    ))}
+                    )}
+
+                    {loading ? (
+                        <div className="loading-container">
+                            <div className="spinner" />
+                            <p>Loading wardrobe...</p>
+                        </div>
+                    ) : items.length === 0 ? (
+                        <div className="empty-state">
+                            <div className="empty-state-icon">👔</div>
+                            <h3>Wardrobe is empty</h3>
+                            <p>Upload clothes or use the Search tab to find items online.</p>
+                        </div>
+                    ) : (
+                        <div className="grid-auto">
+                            {filtered.map((item) => (
+                                <div key={item.id} className="glass-card clothing-card">
+                                    <div className="clothing-card-img">
+                                        <img src={getImageUrl(item.image_path)} alt={item.name || item.category} />
+                                        <div className="clothing-card-actions">
+                                            <button
+                                                className="btn btn-danger btn-icon"
+                                                onClick={() => handleDelete(item.id)}
+                                                title="Remove"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="clothing-card-body">
+                                        <div className="clothing-card-name">
+                                            {item.name || `${item.color} ${item.category}`}
+                                        </div>
+                                        <div className="clothing-card-tags">
+                                            <span className="tag">{item.category}</span>
+                                            <span className="tag tag-neutral">{item.color}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </>
+            ) : (
+                <div className="search-section">
+                    <form onSubmit={handleSearch} style={{ display: "flex", gap: 10, maxWidth: 600, margin: "0 auto 40px" }}>
+                        <input
+                            className="input"
+                            placeholder="Search for items (e.g. 'red cocktail dress', 'navy blazer')..."
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                        />
+                        <button type="submit" className="btn btn-primary" disabled={searching}>
+                            {searching ? "Searching..." : "Search"}
+                        </button>
+                    </form>
+
+                    {searchResults.length > 0 && (
+                        <div className="grid-auto">
+                            {searchResults.map((url, i) => (
+                                <div key={i} className="glass-card clothing-card" onClick={() => !addingUrl && handleAddFromSearch(url)} style={{ cursor: "pointer" }}>
+                                    <div className="clothing-card-img">
+                                        <img src={url} alt="Result" />
+                                        {addingUrl === url ? (
+                                            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
+                                                <div className="spinner" style={{ width: 24, height: 24, borderTopColor: "white" }} />
+                                                <span style={{ marginLeft: 8 }}>Adding...</span>
+                                            </div>
+                                        ) : (
+                                            <div className="clothing-card-actions" style={{ opacity: 1, top: "unset", bottom: 10, right: 10 }}>
+                                                <button className="btn btn-primary btn-sm">
+                                                    + Add
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -178,8 +261,7 @@ export default function WardrobePage() {
     );
 }
 
-// ─── Upload Modal Component ─────────────────────────────────────────────
-
+// ─── Reuse Upload Modal (Same as before) ─────────────────────────────────────────────
 function UploadModal({
     onClose,
     onComplete,
@@ -243,7 +325,7 @@ function UploadModal({
                         >
                             <div className="upload-zone-icon">📷</div>
                             <p><strong>Click or drag</strong> to upload a photo</p>
-                            <p className="text-xs text-muted">JPG, PNG, WebP — max 10MB</p>
+                            <button className="btn btn-secondary btn-sm" style={{ marginTop: 10 }} onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}>Select File</button>
                             <input
                                 ref={fileRef}
                                 type="file"
@@ -295,11 +377,6 @@ function UploadModal({
                                         )}
                                     </button>
                                 </div>
-                                {uploading && (
-                                    <p className="text-xs text-muted" style={{ textAlign: "center" }}>
-                                        AI is analyzing your item — this may take a moment on first run
-                                    </p>
-                                )}
                             </div>
                         </div>
                     )}

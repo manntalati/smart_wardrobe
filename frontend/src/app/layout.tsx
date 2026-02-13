@@ -2,18 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { GoogleOAuthProvider } from "@react-oauth/google";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import "./globals.css";
 
+// Placeholder ID - User must replace this in real app or .env
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID_HERE";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-
-  const links = [
-    { href: "/", label: "Dashboard", icon: "🏠" },
-    { href: "/wardrobe", label: "Wardrobe", icon: "👔" },
-    { href: "/outfits", label: "Outfits", icon: "✨" },
-    { href: "/shopping", label: "Shopping", icon: "🛍️" },
-  ];
-
   return (
     <html lang="en">
       <head>
@@ -25,11 +21,41 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>
       <body>
-        <nav className="navbar">
-          <Link href="/" className="navbar-brand">
-            <span className="navbar-brand-icon">👗</span>
-            Smart Wardrobe
-          </Link>
+        <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+          <AuthProvider>
+            <AppContent>{children}</AppContent>
+          </AuthProvider>
+        </GoogleOAuthProvider>
+      </body>
+    </html>
+  );
+}
+
+function AppContent({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const { user } = useAuth();
+
+  // Hide navbar on login page
+  if (pathname === "/login") {
+    return <>{children}</>;
+  }
+
+  const links = [
+    { href: "/", label: "Dashboard", icon: "🏠" },
+    { href: "/wardrobe", label: "Wardrobe", icon: "👔" },
+    { href: "/outfits", label: "Outfits", icon: "✨" },
+    { href: "/shopping", label: "Shopping", icon: "🛍️" },
+  ];
+
+  return (
+    <>
+      <nav className="navbar">
+        <Link href="/" className="navbar-brand">
+          <span className="navbar-brand-icon">👗</span>
+          Smart Wardrobe
+        </Link>
+
+        {user && (
           <div className="navbar-links">
             {links.map((link) => (
               <Link
@@ -42,9 +68,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </Link>
             ))}
           </div>
-        </nav>
-        {children}
-      </body>
-    </html>
+        )}
+
+        {user && (
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {user.avatar_url && (
+              <img src={user.avatar_url} alt={user.full_name} style={{ width: 32, height: 32, borderRadius: "50%" }} />
+            )}
+          </div>
+        )}
+      </nav>
+      {children}
+    </>
   );
 }

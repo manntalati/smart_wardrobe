@@ -1,8 +1,13 @@
-/**
- * API client for communicating with the FastAPI backend.
- */
+import Cookies from "js-cookie";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+function getHeaders() {
+    const token = Cookies.get("token");
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    return headers;
+}
 
 export interface ClothingItem {
     id: number;
@@ -81,6 +86,7 @@ export async function uploadItem(image: File, name?: string): Promise<{ item: Cl
     const res = await fetch(`${API_BASE}/api/items`, {
         method: "POST",
         body: formData,
+        headers: getHeaders(), // Authorization only, don't set Content-Type for FormData
     });
 
     if (!res.ok) {
@@ -92,18 +98,21 @@ export async function uploadItem(image: File, name?: string): Promise<{ item: Cl
 }
 
 export async function listItems(): Promise<{ items: ClothingItem[]; total: number }> {
-    const res = await fetch(`${API_BASE}/api/items`);
+    const res = await fetch(`${API_BASE}/api/items`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Failed to load wardrobe");
     return res.json();
 }
 
 export async function deleteItem(id: number): Promise<void> {
-    const res = await fetch(`${API_BASE}/api/items/${id}`, { method: "DELETE" });
+    const res = await fetch(`${API_BASE}/api/items/${id}`, {
+        method: "DELETE",
+        headers: getHeaders()
+    });
     if (!res.ok) throw new Error("Failed to delete item");
 }
 
 export async function findSimilar(id: number, k = 5): Promise<{ similar_items: ClothingItem[] }> {
-    const res = await fetch(`${API_BASE}/api/items/${id}/similar?k=${k}`);
+    const res = await fetch(`${API_BASE}/api/items/${id}/similar?k=${k}`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Failed to find similar items");
     return res.json();
 }
@@ -118,7 +127,7 @@ export async function getRecommendations(
     if (city) params.set("city", city);
     if (style) params.set("style", style);
 
-    const res = await fetch(`${API_BASE}/api/recommendations?${params}`);
+    const res = await fetch(`${API_BASE}/api/recommendations?${params}`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Failed to get recommendations");
     return res.json();
 }
@@ -127,7 +136,7 @@ export async function getShoppingSuggestions(occasion?: string): Promise<Shoppin
     const params = new URLSearchParams();
     if (occasion) params.set("occasion", occasion);
 
-    const res = await fetch(`${API_BASE}/api/shopping?${params}`);
+    const res = await fetch(`${API_BASE}/api/shopping?${params}`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Failed to get shopping suggestions");
     return res.json();
 }
@@ -141,4 +150,27 @@ export async function getHealth(): Promise<HealthStatus> {
 export function getImageUrl(imagePath: string): string {
     if (imagePath.startsWith("http")) return imagePath;
     return `${API_BASE}${imagePath}`;
+}
+
+export async function searchImages(query: string): Promise<{ images: string[] }> {
+    const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(query)}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error("Search failed");
+    return res.json();
+}
+
+export async function addItemFromUrl(imageUrl: string, name?: string): Promise<{ item: ClothingItem; classification: Record<string, unknown> }> {
+    const res = await fetch(`${API_BASE}/api/items/from-url`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...getHeaders()
+        },
+        body: JSON.stringify({ image_url: imageUrl, name }),
+    });
+
+    if (!res.ok) {
+        const error = await res.json().catch(() => ({ detail: "Failed to add item" }));
+        throw new Error(error.detail || "Failed to add item");
+    }
+    return res.json();
 }
