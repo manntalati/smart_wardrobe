@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import "./globals.css";
@@ -33,7 +34,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const [showDropdown, setShowDropdown] = useState(false);
 
   // Hide navbar on login page
   if (pathname === "/login") {
@@ -71,9 +73,29 @@ function AppContent({ children }: { children: React.ReactNode }) {
         )}
 
         {user && (
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {user.avatar_url && (
-              <img src={user.avatar_url} alt={user.full_name} style={{ width: 32, height: 32, borderRadius: "50%" }} />
+          <div className="navbar-user" onClick={() => setShowDropdown(!showDropdown)}>
+            <div className="user-avatar">
+              {user.avatar_url ? (
+                <img src={user.avatar_url} alt={user.full_name} />
+              ) : (
+                <span>{user.full_name?.charAt(0) || "U"}</span>
+              )}
+            </div>
+
+            {showDropdown && (
+              <>
+                <div className="dropdown-overlay" onClick={(e) => { e.stopPropagation(); setShowDropdown(false); }} />
+                <div className="dropdown-menu">
+                  <div className="dropdown-header">
+                    <strong>{user.full_name}</strong>
+                    <span className="text-xs text-muted">{user.email}</span>
+                  </div>
+                  <div className="dropdown-divider" />
+                  <button className="dropdown-item text-danger" onClick={logout}>
+                    Sign Out
+                  </button>
+                </div>
+              </>
             )}
           </div>
         )}
