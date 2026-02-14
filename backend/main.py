@@ -22,7 +22,9 @@ from services.shopping import analyze_wardrobe_gaps
 from services.auth import verify_google_token, create_access_token, get_current_user, get_optional_user
 from services.search import search_images, download_image
 
-load_dotenv()
+# Load .env from project root
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(base_dir, ".env"))
 
 app = FastAPI(
     title="Smart Wardrobe API",

@@ -13,5 +13,5 @@ python-dotenv==1.0.1
 numpy==1.26.4
 python-jose[cryptography]==3.3.0
 google-auth==2.35.0
-duckduckgo-search==6.3.0
+ddgs>=9.10.0
 aiofiles==24.1.0
