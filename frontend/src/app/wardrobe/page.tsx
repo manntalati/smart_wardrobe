@@ -5,6 +5,7 @@ import {
     listItems,
     uploadItem,
     deleteItem,
+    patchItem,
     getImageUrl,
     searchImages,
     addItemFromUrl,
@@ -12,14 +13,23 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
+const OCCASION_OPTIONS = ["casual", "work", "formal", "athletic", "party", "outdoor"];
+const SEASON_OPTIONS = ["spring/summer", "fall/winter", "all-season"];
+const PAGE_SIZE = 20;
+
 export default function WardrobePage() {
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<"wardrobe" | "search">("wardrobe");
 
     // Wardrobe State
     const [items, setItems] = useState<ClothingItem[]>([]);
+    const [totalCount, setTotalCount] = useState(0);
+    const [page, setPage] = useState(1);
+    const [hasMore, setHasMore] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [showUpload, setShowUpload] = useState(false);
+    const [editItem, setEditItem] = useState<ClothingItem | null>(null);
     const [filter, setFilter] = useState({ category: "", color: "" });
 
     // Search State
@@ -28,34 +38,52 @@ export default function WardrobePage() {
     const [searching, setSearching] = useState(false);
     const [addingUrl, setAddingUrl] = useState<string | null>(null);
 
-    const loadItems = useCallback(async () => {
+    const loadItems = useCallback(async (pageNum = 1, append = false) => {
         try {
-            const data = await listItems();
-            setItems(data.items);
+            if (pageNum === 1) setLoading(true);
+            else setLoadingMore(true);
+
+            const res = await listItems(pageNum, PAGE_SIZE);
+            const newItems = res.data;
+            const total = res.meta.total ?? newItems.length;
+
+            setTotalCount(total);
+            setItems((prev) => append ? [...prev, ...newItems] : newItems);
+            setPage(pageNum);
+            setHasMore(pageNum * PAGE_SIZE < total);
         } catch {
             console.error("Failed to load items");
         } finally {
             setLoading(false);
+            setLoadingMore(false);
         }
     }, []);
 
     useEffect(() => {
-        if (user) loadItems();
+        if (user) loadItems(1);
     }, [user, loadItems]);
+
+    const handleLoadMore = () => loadItems(page + 1, true);
 
     const handleDelete = async (id: number) => {
         if (!confirm("Remove this item from your wardrobe?")) return;
         try {
             await deleteItem(id);
             setItems((prev) => prev.filter((item) => item.id !== id));
+            setTotalCount((c) => c - 1);
         } catch {
             alert("Failed to delete item");
         }
     };
 
+    const handleItemUpdated = (updated: ClothingItem) => {
+        setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+        setEditItem(null);
+    };
+
     const handleUploadComplete = () => {
         setShowUpload(false);
-        loadItems();
+        loadItems(1);
     };
 
     const handleSearch = async (e: React.FormEvent) => {
@@ -63,9 +91,9 @@ export default function WardrobePage() {
         if (!query.trim()) return;
         setSearching(true);
         try {
-            const data = await searchImages(query);
-            setSearchResults(data.images);
-        } catch (err) {
+            const res = await searchImages(query);
+            setSearchResults(res.data.images);
+        } catch {
             alert("Search failed. Please try again.");
         } finally {
             setSearching(false);
@@ -77,16 +105,15 @@ export default function WardrobePage() {
         try {
             await addItemFromUrl(imageUrl);
             alert("Item added to wardrobe!");
-            loadItems();
-            // Optional: Switch back to wardrobe tab?
-        } catch (err) {
+            loadItems(1);
+        } catch {
             alert("Failed to add item. Try another image.");
         } finally {
             setAddingUrl(null);
         }
     };
 
-    // Filter items
+    // Client-side filter (applied on top of loaded items)
     const categories = [...new Set(items.map((i) => i.category))].sort();
     const colors = [...new Set(items.map((i) => i.color))].sort();
     const filtered = items.filter((item) => {
@@ -133,7 +160,7 @@ export default function WardrobePage() {
             {activeTab === "wardrobe" ? (
                 <>
                     {/* Filters */}
-                    {items.length > 0 && (
+                    {totalCount > 0 && (
                         <div className="filter-bar">
                             <div className="form-group">
                                 <label className="form-label">Category</label>
@@ -163,7 +190,9 @@ export default function WardrobePage() {
                             </div>
                             <div style={{ display: "flex", alignItems: "flex-end" }}>
                                 <span className="text-sm text-muted" style={{ paddingBottom: 12 }}>
-                                    {filtered.length} item{filtered.length !== 1 ? "s" : ""}
+                                    {filter.category || filter.color
+                                        ? `${filtered.length} of ${totalCount}`
+                                        : `${totalCount} item${totalCount !== 1 ? "s" : ""}`}
                                 </span>
                             </div>
                         </div>
@@ -181,33 +210,62 @@ export default function WardrobePage() {
                             <p>Upload clothes or use the Search tab to find items online.</p>
                         </div>
                     ) : (
-                        <div className="grid-auto">
-                            {filtered.map((item) => (
-                                <div key={item.id} className="glass-card clothing-card">
-                                    <div className="clothing-card-img">
-                                        <img src={getImageUrl(item.image_path)} alt={item.name || item.category} />
-                                        <div className="clothing-card-actions">
-                                            <button
-                                                className="btn btn-danger btn-icon"
-                                                onClick={() => handleDelete(item.id)}
-                                                title="Remove"
-                                            >
-                                                ✕
-                                            </button>
+                        <>
+                            <div className="grid-auto">
+                                {filtered.map((item) => (
+                                    <div key={item.id} className="glass-card clothing-card">
+                                        <div className="clothing-card-img">
+                                            <img src={getImageUrl(item.image_path)} alt={item.name || item.category} />
+                                            <div className="clothing-card-actions">
+                                                <button
+                                                    className="btn btn-secondary btn-icon"
+                                                    onClick={() => setEditItem(item)}
+                                                    title="Edit"
+                                                >
+                                                    ✏️
+                                                </button>
+                                                <button
+                                                    className="btn btn-danger btn-icon"
+                                                    onClick={() => handleDelete(item.id)}
+                                                    title="Remove"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="clothing-card-body">
+                                            <div className="clothing-card-name">
+                                                {item.name || `${item.color} ${item.category}`}
+                                            </div>
+                                            <div className="clothing-card-tags">
+                                                <span className="tag">{item.category}</span>
+                                                <span className="tag tag-neutral">{item.color}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="clothing-card-body">
-                                        <div className="clothing-card-name">
-                                            {item.name || `${item.color} ${item.category}`}
-                                        </div>
-                                        <div className="clothing-card-tags">
-                                            <span className="tag">{item.category}</span>
-                                            <span className="tag tag-neutral">{item.color}</span>
-                                        </div>
-                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Load More */}
+                            {hasMore && !filter.category && !filter.color && (
+                                <div style={{ textAlign: "center", marginTop: 32 }}>
+                                    <button
+                                        className="btn btn-secondary"
+                                        onClick={handleLoadMore}
+                                        disabled={loadingMore}
+                                    >
+                                        {loadingMore ? (
+                                            <>
+                                                <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+                                                Loading...
+                                            </>
+                                        ) : (
+                                            `Load More (${totalCount - items.length} remaining)`
+                                        )}
+                                    </button>
                                 </div>
-                            ))}
-                        </div>
+                            )}
+                        </>
                     )}
                 </>
             ) : (
@@ -227,7 +285,12 @@ export default function WardrobePage() {
                     {searchResults.length > 0 && (
                         <div className="grid-auto">
                             {searchResults.map((url, i) => (
-                                <div key={i} className="glass-card clothing-card" onClick={() => !addingUrl && handleAddFromSearch(url)} style={{ cursor: "pointer" }}>
+                                <div
+                                    key={i}
+                                    className="glass-card clothing-card"
+                                    onClick={() => !addingUrl && handleAddFromSearch(url)}
+                                    style={{ cursor: "pointer" }}
+                                >
                                     <div className="clothing-card-img">
                                         <img src={url} alt="Result" />
                                         {addingUrl === url ? (
@@ -257,18 +320,22 @@ export default function WardrobePage() {
                     onComplete={handleUploadComplete}
                 />
             )}
+
+            {/* Edit Modal */}
+            {editItem && (
+                <EditModal
+                    item={editItem}
+                    onClose={() => setEditItem(null)}
+                    onSave={handleItemUpdated}
+                />
+            )}
         </div>
     );
 }
 
-// ─── Reuse Upload Modal (Same as before) ─────────────────────────────────────────────
-function UploadModal({
-    onClose,
-    onComplete,
-}: {
-    onClose: () => void;
-    onComplete: () => void;
-}) {
+// ─── Upload Modal ─────────────────────────────────────────────────────────────
+
+function UploadModal({ onClose, onComplete }: { onClose: () => void; onComplete: () => void }) {
     const [file, setFile] = useState<File | null>(null);
     const [preview, setPreview] = useState<string>("");
     const [name, setName] = useState("");
@@ -297,8 +364,8 @@ function UploadModal({
         setUploading(true);
         setError("");
         try {
-            const data = await uploadItem(file, name || undefined);
-            setResult(data.classification);
+            const res = await uploadItem(file, name || undefined);
+            setResult(res.data.classification);
             setTimeout(onComplete, 1500);
         } catch (err) {
             setError(err instanceof Error ? err.message : "Upload failed");
@@ -380,6 +447,121 @@ function UploadModal({
                             </div>
                         </div>
                     )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Edit Modal ───────────────────────────────────────────────────────────────
+
+function EditModal({
+    item,
+    onClose,
+    onSave,
+}: {
+    item: ClothingItem;
+    onClose: () => void;
+    onSave: (updated: ClothingItem) => void;
+}) {
+    const [name, setName] = useState(item.name || "");
+    const [season, setSeason] = useState(item.season || "");
+    const [occasionTags, setOccasionTags] = useState<string[]>(item.occasion_tags || []);
+    const [notes, setNotes] = useState(item.notes || "");
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+
+    const toggleTag = (tag: string) =>
+        setOccasionTags((prev) =>
+            prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+        );
+
+    const handleSave = async () => {
+        setSaving(true);
+        setError("");
+        try {
+            const res = await patchItem(item.id, {
+                name: name || undefined,
+                season: season || undefined,
+                occasion_tags: occasionTags,
+                notes: notes || undefined,
+            });
+            onSave(res.data);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to save");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+            <div className="modal-content">
+                <div className="modal-header">
+                    <h2>Edit Item</h2>
+                    <button className="btn btn-icon btn-secondary" onClick={onClose}>✕</button>
+                </div>
+                <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    <div className="form-group">
+                        <label className="form-label">Name</label>
+                        <input
+                            className="input"
+                            type="text"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder={`${item.color} ${item.category}`}
+                        />
+                    </div>
+
+                    <div className="form-group">
+                        <label className="form-label">Season</label>
+                        <select className="select" value={season} onChange={(e) => setSeason(e.target.value)}>
+                            <option value="">— select —</option>
+                            {SEASON_OPTIONS.map((s) => (
+                                <option key={s} value={s}>{s}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="form-group">
+                        <label className="form-label">Occasions</label>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                            {OCCASION_OPTIONS.map((tag) => (
+                                <button
+                                    key={tag}
+                                    type="button"
+                                    className={`btn btn-sm ${occasionTags.includes(tag) ? "btn-primary" : "btn-secondary"}`}
+                                    onClick={() => toggleTag(tag)}
+                                    style={{ borderRadius: 20 }}
+                                >
+                                    {tag}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="form-group">
+                        <label className="form-label">Notes</label>
+                        <textarea
+                            className="input"
+                            rows={3}
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            placeholder="Any notes about this item..."
+                            style={{ resize: "vertical" }}
+                        />
+                    </div>
+
+                    {error && <p style={{ color: "#f07070", fontSize: "0.85rem" }}>{error}</p>}
+
+                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                        <button className="btn btn-secondary" onClick={onClose} disabled={saving}>
+                            Cancel
+                        </button>
+                        <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+                            {saving ? "Saving..." : "Save Changes"}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

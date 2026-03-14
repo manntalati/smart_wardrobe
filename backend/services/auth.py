@@ -2,8 +2,7 @@
 Authentication service for Google Sign-In and JWT management.
 """
 import os
-import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -21,18 +20,14 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 30
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(datetime.UTC) + expires_delta
-    else:
-        expire = datetime.now(datetime.UTC) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
-    
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    delta = expires_delta or timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(timezone.utc) + delta
+    to_encode.update({"exp": int(expire.timestamp())})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def verify_google_token(token: str):
     # DEVELOPMENT BYPASS
@@ -76,14 +71,11 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         raise credentials_exception
     return user
 
-def get_optional_user(token: Optional[str] = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    """
-    Returns user if token is valid, else None. 
-    Used for migration/hybrid states or public endpoints.
-    """
+async def get_optional_user(token: Optional[str] = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """Returns the current user if the token is valid, otherwise None."""
     if not token:
         return None
     try:
-        return get_current_user(token, db)
-    except:
+        return await get_current_user(token, db)
+    except Exception:
         return None

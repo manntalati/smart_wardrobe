@@ -2,22 +2,24 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { listItems, getHealth, getImageUrl, type ClothingItem, type HealthStatus } from "@/lib/api";
+import { listItems, getHealth, getImageUrl, type ClothingItem, type ApiResponse, type HealthStatus } from "@/lib/api";
 
 export default function DashboardPage() {
   const [items, setItems] = useState<ClothingItem[]>([]);
-  const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [totalItems, setTotalItems] = useState(0);
+  const [health, setHealth] = useState<ApiResponse<HealthStatus> | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const [itemData, healthData] = await Promise.all([
-          listItems().catch(() => ({ items: [], total: 0 })),
+        const [itemRes, healthRes] = await Promise.all([
+          listItems(1, 50).catch(() => ({ data: [] as ClothingItem[], error: null, meta: { total: 0 } })),
           getHealth().catch(() => null),
         ]);
-        setItems(itemData.items);
-        setHealth(healthData);
+        setItems(itemRes.data);
+        setTotalItems(itemRes.meta.total ?? itemRes.data.length);
+        setHealth(healthRes);
       } finally {
         setLoading(false);
       }
@@ -56,7 +58,7 @@ export default function DashboardPage() {
           {/* Stats */}
           <div className="stats-bar">
             <div className="glass-card stat-card">
-              <div className="stat-value">{items.length}</div>
+              <div className="stat-value">{totalItems}</div>
               <div className="stat-label">Items</div>
             </div>
             <div className="glass-card stat-card">
@@ -69,7 +71,7 @@ export default function DashboardPage() {
             </div>
             <div className="glass-card stat-card">
               <div className="stat-value">
-                {health?.gemini_configured ? "✅" : "❌"}
+                {health?.data?.gemini_configured ? "✅" : "❌"}
               </div>
               <div className="stat-label">Gemini AI</div>
             </div>
@@ -154,7 +156,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {items.length === 0 && (
+          {totalItems === 0 && items.length === 0 && (
             <div className="empty-state">
               <div className="empty-state-icon">👗</div>
               <h3>Your wardrobe is empty</h3>

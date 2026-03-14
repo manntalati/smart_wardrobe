@@ -26,8 +26,8 @@ export default function ShoppingPage() {
         setLoading(true);
         setError("");
         try {
-            const result = await getShoppingSuggestions(occasion || undefined);
-            setData(result);
+            const res = await getShoppingSuggestions(occasion || undefined);
+            setData(res.data);
         } catch {
             setError("Failed to analyze wardrobe. Is the backend running?");
         } finally {

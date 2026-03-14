@@ -32,8 +32,8 @@ export default function OutfitsPage() {
 
     // Load wardrobe items for rendering outfit thumbnails
     useEffect(() => {
-        listItems()
-            .then((data) => setItems(data.items))
+        listItems(1, 200)
+            .then((res) => setItems(res.data))
             .catch(() => { });
     }, []);
 
@@ -43,10 +43,10 @@ export default function OutfitsPage() {
         setLoading(true);
         setMessage("");
         try {
-            const result = await getRecommendations(occasion, city || undefined, 3, style || undefined);
-            setOutfits(result.outfits || []);
-            setWeather(result.weather || null);
-            setMessage(result.message || "");
+            const res = await getRecommendations(occasion, city || undefined, 3, style || undefined);
+            setOutfits(res.data.outfits || []);
+            setWeather(res.data.weather || null);
+            setMessage(res.data.message || "");
             setHasLoaded(true);
         } catch {
             setMessage("Failed to get recommendations. Is the backend running?");

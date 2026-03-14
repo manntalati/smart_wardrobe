@@ -3,9 +3,12 @@ CLIP embedding management and FAISS vector index for wardrobe similarity search.
 """
 import os
 import json
+import logging
 import numpy as np
 import faiss
 from models.database import SessionLocal, ClothingItem
+
+logger = logging.getLogger(__name__)
 
 EMBEDDING_DIM = 512
 INDEX_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "faiss_index.bin")
@@ -46,21 +49,24 @@ class EmbeddingIndex:
                 if item.user_id:
                     self.user_map[item.id] = item.user_id
                     
-            # If item count mismatch (e.g. DB items deleted directly), 
-            # we should ideally rebuild index. For now trust consistent state.
             if len(self.item_ids) != self.index.ntotal:
-                 print(f"⚠️ Index mismatch: DB has {len(self.item_ids)} items, Index has {self.index.ntotal}. Rebuilding...")
-                 self._rebuild_all(items)
+                logger.warning(
+                    "FAISS mismatch: DB has %d items, index has %d. Rebuilding...",
+                    len(self.item_ids),
+                    self.index.ntotal,
+                )
+                self._rebuild_all(items)
                  
         finally:
             db.close()
 
     def _rebuild_all(self, items):
         """Rebuild index from scratch using provided items."""
+        logger.info("Rebuilding FAISS index from %d DB items...", len(items))
         self.index = faiss.IndexFlatIP(EMBEDDING_DIM)
         self.item_ids = []
         self.user_map = {}
-        
+
         for item in items:
             if not item.embedding_json:
                 continue
@@ -71,7 +77,8 @@ class EmbeddingIndex:
             self.item_ids.append(item.id)
             if item.user_id:
                 self.user_map[item.id] = item.user_id
-                
+
+        logger.info("FAISS rebuild complete: %d items indexed", self.index.ntotal)
         self._save()
 
     def add_item(self, item_id: int, embedding: list[float], user_id: int = None):
@@ -148,7 +155,10 @@ class EmbeddingIndex:
 
     def _save(self):
         """Persist the FAISS index to disk."""
-        faiss.write_index(self.index, INDEX_PATH)
+        try:
+            faiss.write_index(self.index, INDEX_PATH)
+        except Exception as e:
+            logger.error("Failed to save FAISS index: %s", e)
 
 
 # Singleton instance

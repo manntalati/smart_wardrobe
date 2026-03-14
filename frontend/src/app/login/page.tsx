@@ -14,7 +14,7 @@ export default function LoginPage() {
     const handleSuccess = async (credentialResponse: any) => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_BASE}/api/auth/login`, {
+            const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ token: credentialResponse.credential }),
@@ -22,8 +22,8 @@ export default function LoginPage() {
 
             if (!res.ok) throw new Error("Login failed");
 
-            const data = await res.json();
-            login(data.access_token, data.user);
+            const envelope = await res.json();
+            login(envelope.data.access_token, envelope.data.user);
         } catch (err) {
             setError("Authentication failed. Please try again.");
             console.error(err);
